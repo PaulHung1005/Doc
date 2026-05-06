@@ -6,7 +6,7 @@ OS: Ubuntu 22.04.05 (LTS)
 Memory: 64 GB
 SSD: 512 GB
 ```
-![圖片描述](./images/openbmc_n_host_fvp.png)
+![圖片描述](./images/arm/openbmc_n_host_fvp.png)
 
 ## Environment Setup
 ### Install repository

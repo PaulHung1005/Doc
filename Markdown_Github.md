@@ -16,6 +16,7 @@ The easiest way to do this is by opening a Markdown file on your repository.
 ## A second-level heading
 ### A third-level heading
 ```
+![Screenshot of rendered GitHub Markdown showing sample h1, h2, and h3 headers, which descend in type size and visual weight to show hierarchy level.](./images/headings-rendered.png)
 
 ## Styling text
 
