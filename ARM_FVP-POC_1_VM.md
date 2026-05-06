@@ -241,6 +241,30 @@ sudo ip link set RedfishHI master virbr0
 ```
 ./run.sh -m /home/polxtech/FVP_RD_V3_R1/models/Linux64_GCC-9.3/FVP_RD_V3_R1
 ```
+
+![圖片描述](./images/arm/run_FVP_rdv3r1_1.png)
+
+![圖片描述](./images/arm/run_FVP_rdv3r1_2.png)
+
+![OpenBmc Console](./images/arm/run_FVP_rdv3r1_3.png)
+
+![OpenBmc Web UI](./images/arm/run_FVP_rdv3r1_4.png)
+
+![OpenBmc Web UI](./images/arm/run_FVP_rdv3r1_5.png)
+
+![FVP UEFI Console](./images/arm/run_FVP_rdv3r1_6.png)
+
+![FVP UEFI Console](./images/arm/run_FVP_rdv3r1_7.png)
+
+![FVP OS Booting](./images/arm/run_FVP_rdv3r1_7-1.png)
+
+![FVP OS Booting](./images/arm/run_FVP_rdv3r1_7-2.png)
+
+![FVP OS Boot shell mode](./images/arm/run_FVP_rdv3r1_7-3.png)
+
+![FVP OS Boot shell mode](./images/arm/run_FVP_rdv3r1_7-4.png)
+
+
 ---
 # Other Linux Command 
 ## Set hostname to vm1
