@@ -707,14 +707,418 @@ ipmitool -I serial-basic -D /dev/ttyAMA2 raw 0x2c 0x01 0xae $DATA
 echo
 ```
 ### Redfish Host Interface communication
+[Redfish Host Interface](https://www.dmtf.org/sites/default/files/standards/documents/DSP0270_1.3.1.pdf) is an in-band communication channel that enables host software to access the Redfish provided by a management controller without relying on external networking.
 
-![In-band block diagram](./images/arm/)
+The development of a prototype for the Redfish Host Interface that connects OpenBMC (Base-FVP) to the Host (RD-V3-R1 FVP) as below block diagram. A virtual ethernet interface supports the Redfish Host Interface to provide in-band communication. The host (UEFI EDK2) constructs the RedfishPkg by querying BMC information using IPMI over Serial interface. The host then populates SMBIOS type 42 record for host software discovery.
 
-![In-band block diagram](./images/arm/)
+As a result, end users (UEFI and the operating system) can manage the computer system through the Redfish Host Interface.
+![In-band block diagram](./images/arm/redfish_host_interface_blockdiagram.png)
+
+For the EDK implementation, we adopted the UEFI Redfish EDK2 solution. This solution is divided into two parts: the EDK Redfish foundation and the EDK2 Redfish Client, as shown in below picture. The EDK2 Redfish foundation provides the essential EDK2 drivers needed to communicate with the Redfish service, while the EDK2 Redfish Client is the application used to configure platform settings by leveraging Redfish properties.
+
+We implemented the reference code for the Platform Redfish Credential Library and the Platform Redfish Host Interface Library since we are using virtual Net device that without hardware information. The device descriptor in the Redfish Platform Host Interface Library assumes it is a USB NIC device.
+
+However, in a real hardware system, the data structure of the device descriptor would need to be fully implemented. And the implementation of these two libraries may vary depending on the design of the platform and BMC systems.
+
+Furthermore, we also implemented a Redfish utility to validate Redfish Host Interface and enhanced the smbiosview utility in the UEFI shell, enabling support for type 42.
+
+For the OpenBMC implementation, we implemented the minimum required IPMI OEM commands for the EDK2 Redfish foundation. These IPMI OEM commands can be extended based on the specific platform design.
+
+- Redfish Host Interface commands
+  - Group 0x52, Cmd cmdGetCertificateFingerprint = 0x1
+  - Group 0x52, Cmd cmdGetBootstrapAccoutCredential = 0x2
+- Arm OEM NetFn 0x30 commands
+  - Command - cmdGetRedfishUuid = 0x1
+  - Command - cmdGetRedfishPortNumber = 0x2
+
+In the OS environment, we use redfish-finder to configure the Redfish Host Interface based on the SMBIOS Type 42 record. Once set up, the Redfish service is mapped to the redfish-local domain, making it easily accessible via redfish-localhost.
+
+> [!NOTE]
+> We added GenericNetDevice to enable detection of virtual network devices in redfish-finder.
+
+#### Sample EDK2 RedfishPkg and Redfish Commandline Application
+
+During the boot sequence, the host issues IPMI commands to the BMC to construct the SMBIOS Type 42 record for the Redfish Host Interface, then outputs the following log:
+
+```markdown
+...
+BMC IP Discovery Type: 1
+BMC IP format: 2
+BMC IP : 192.168.122.10
+BMC IP Subnet Mask: 255.255.255.0
+Port 443 
+BMC Vlan ID: 0
+BMC Mac Address: 72:45:77:AA:F7:87
+...
+```
+
+Use sample command line applications, smbiosview and RedfishUtility.efi, to dump the SMBIOS Type 42 record and query the Redfish API.
+Execute the below command in the terminal_uart_ns_uart0 (AP) console to view SMBIOS Type 42 record from UEFI shell and access Redfish /redfish/v1 object.
+
+```markdown
+Shell> smbiosview -t 42
+SMBIOS Entry Point Structure:
+Anchor String:        _SM_
+EPS Checksum:         0x5A
+Entry Point Len:      31
+Version:              3.4
+Number of Structures: 13
+Max Struct size:      289
+Table Address:        0xF2570000
+Table Length:         1715
+Entry Point revision: 0x0
+SMBIOS BCD Revision:  0x34
+Inter Anchor:         _DMI_
+Inter Checksum:       0x25
+Formatted Area:  
+  00000000: 00 00 00 00 00                                   *.....*
+
+=========================================================
+Query Structure, conditions are:
+QueryType   = 42
+QueryHandle = Random
+ShowType    = SHOW_DETAIL
 
 
+=========================================================
+Type=42, Handle=0x4
+Dump Structure as:
+Index=11,Length=0x86,Addr=0xF2570627
+00000000: 2A 84 04 00 40 11 04 11-28 0D 04 02 00 72 45 77  **...@...(....rEw*
+00000010: AA F7 87 01 00 FF FF 01-04 6A 78 54 3C D5 D5 BB  *.........jxT<...*
+00000020: 40 8D 94 DB 08 36 E2 C0-F0 1E 01 01 C0 A8 7A 09  *@....6........z.*
+00000030: 00 00 00 00 00 00 00 00-00 00 00 00 FF FF FF 00  *................*
+00000040: 00 00 00 00 00 00 00 00-00 00 00 00 01 01 C0 A8  *................*
+00000050: 7A 0A 00 00 00 00 00 00-00 00 00 00 00 00 FF FF  *z...............*
+00000060: FF 00 00 00 00 00 00 00-00 00 00 00 00 00 BB 01  *................*
+00000070: 00 00 00 00 0F 31 39 32-2E 31 36 38 2E 31 32 32  *.....192.168.122*
+00000080: 2E 31 30 00 00 00                                *.10...*
+Type: Management Controller Host Interface
+Length: 132
+Handle: 4
+MC Host Interface Type: Network Host Interface 
+InterfaceTypeSpecificDataLength: 0x11
+Dump InterfaceTypeSpecificData
+size=17:
+00000000: 04 11 28 0D 04 02 00 72-45 77 AA F7 87 01 00 FF  *..(....rEw......*
+00000010: FF                                               *.*
+DeviceType: USB v2
+IdVendor: 0xD28
+IdProduct: 0x204
+MacAddress: 72:45:77:AA:F7:87
+Characteristics: 0x1
+CredentialBootstrappingHandle: 0xFFFF
+
+ProtocolType: Redfish over IP 
+ServiceUUID: 
+00000000: 78 54 3C D5 D5 BB 40 8D-94 DB 08 36 E2 C0 F0 1E  *xT<...@....6....*
+HostIpAssignmentType: Static 
+HostIpAddressFormat: IPv4
+HostIpAddress: 192.168.122.9
+HostIpMask: 255.255.255.0
+RedfishServiceIpAssignmentType: Static 
+RedfishServiceIpAddressFormat: IPv4
+RedfishServiceIpAddress: 192.168.122.10
+RedfishServiceIpMask: 255.255.255.0
+RedfishServiceIpPort: 443
+RedfishServiceVlanId: 0
+RedfishServiceHostnameLength: 15
+RedfishServiceHostname: 192.168.122.10
 
 
+=========================================================
+SMBIOS 3.0 (64-bit) Entry Point Structure:
+Anchor String:        _SM3_
+EPS Checksum:         0x4F
+Entry Point Len:      24
+Version:              3.4
+SMBIOS Docrev:        0x0
+Table Max Size:       1715
+Table Address:        0xF2550000
+Entry Point revision: 0x1
+
+=========================================================
+Query Structure, conditions are:
+QueryType   = 42
+QueryHandle = Random
+ShowType    = SHOW_DETAIL
+
+
+=========================================================
+Type=42, Handle=0x4
+Dump Structure as:
+Index=11,Length=0x86,Addr=0xF2550627
+00000000: 2A 84 04 00 40 11 04 11-28 0D 04 02 00 72 45 77  **...@...(....rEw*
+00000010: AA F7 87 01 00 FF FF 01-04 6A 78 54 3C D5 D5 BB  *.........jxT<...*
+00000020: 40 8D 94 DB 08 36 E2 C0-F0 1E 01 01 C0 A8 7A 09  *@....6........z.*
+00000030: 00 00 00 00 00 00 00 00-00 00 00 00 FF FF FF 00  *................*
+00000040: 00 00 00 00 00 00 00 00-00 00 00 00 01 01 C0 A8  *................*
+00000050: 7A 0A 00 00 00 00 00 00-00 00 00 00 00 00 FF FF  *z...............*
+00000060: FF 00 00 00 00 00 00 00-00 00 00 00 00 00 BB 01  *................*
+00000070: 00 00 00 00 0F 31 39 32-2E 31 36 38 2E 31 32 32  *.....192.168.122*
+00000080: 2E 31 30 00 00 00                                *.10...*
+Type: Management Controller Host Interface
+Length: 132
+Handle: 4
+MC Host Interface Type: Network Host Interface 
+InterfaceTypeSpecificDataLength: 0x11
+Dump InterfaceTypeSpecificData
+size=17:
+00000000: 04 11 28 0D 04 02 00 72-45 77 AA F7 87 01 00 FF  *..(....rEw......*
+00000010: FF                                               *.*
+DeviceType: USB v2
+IdVendor: 0xD28
+IdProduct: 0x204
+MacAddress: 72:45:77:AA:F7:87
+Characteristics: 0x1
+CredentialBootstrappingHandle: 0xFFFF
+
+ProtocolType: Redfish over IP 
+ServiceUUID: 
+00000000: 78 54 3C D5 D5 BB 40 8D-94 DB 08 36 E2 C0 F0 1E  *xT<...@....6....*
+HostIpAssignmentType: Static 
+HostIpAddressFormat: IPv4
+HostIpAddress: 192.168.122.9
+HostIpMask: 255.255.255.0
+RedfishServiceIpAssignmentType: Static 
+RedfishServiceIpAddressFormat: IPv4
+RedfishServiceIpAddress: 192.168.122.10
+RedfishServiceIpMask: 255.255.255.0
+RedfishServiceIpPort: 443
+RedfishServiceVlanId: 0
+RedfishServiceHostnameLength: 15
+RedfishServiceHostname: 192.168.122.10
+
+
+=========================================================
+```
+
+```markdown
+FS0:\> RedfishUtility.efi /redfish/v1
+add-symbol-file /home/polxtech/src/fvp-poc/host/uefi/edk2/Build/RdV3R1/DEBUG_GCC5/AARCH64/RedfishClientPkg/Application/RedfishUtility/RedfishUtility/DEBUG/RedfishUtility.dll 0xEC8D3000
+Loading driver at 0x000EC8D2000 EntryPoint=0x000EC8D5C74 RedfishUtility.efi
+HttpNotify: Event - 4, EventStatus - Success
+HttpNotify: Notifying EDF3C3E0
+HttpNotify: Notifying EDF3AD60
+HttpNotify: Event - 1, EventStatus - Success
+HttpNotify: Notifying EDF3C3E0
+HttpNotify: Notifying EDF3AD60
+HttpNotify: Event - 2, EventStatus - Success
+HttpNotify: Notifying EDF3C3E0
+HttpNotify: Notifying EDF3AD60
+HttpNotify: Event - 3, EventStatus - Success
+HttpNotify: Notifying EDF3C3E0
+HttpNotify: Notifying EDF3AD60
+HTTP Status : 3 
+HTTP Response : 
+{
+  "@odata.id": "/redfish/v1",
+  "@odata.type": "#ServiceRoot.v1_15_0.ServiceRoot",
+  "AccountService": {
+    "@odata.id": "/redfish/v1/AccountService"
+  },
+  "Cables": {
+    "@odata.id": "/redfish/v1/Cables"
+  },
+  "CertificateService": {
+    "@odata.id": "/redfish/v1/CertificateService"
+  },
+  "Chassis": {
+    "@odata.id": "/redfish/v1/Chassis"
+  },
+  "EventService": {
+    "@odata.id": "/redfish/v1/EventService"
+  },
+  "Fabrics": {
+    "@odata.id": "/redfish/v1/Fabrics"
+  },
+  "Id": "RootService",
+  "JsonSchemas": {
+    "@odata.id": "/redfish/v1/JsonSchemas"
+  },
+  "Links": {
+    "ManagerProvidingService": {
+      "@odata.id": "/redfish/v1/Managers/bmc"
+    },
+    "Sessions": {
+      "@odata.id": "/redfish/v1/SessionService/Sessions"
+    }
+  },
+  "Managers": {
+    "@odata.id": "/redfish/v1/Managers"
+  },
+  "Name": "Root Service",
+  "ProtocolFeaturesSupported": {
+    "DeepOperations": {
+      "DeepPATCH": false,
+      "DeepPOST": false
+    },
+    "ExcerptQuery": false,
+    "ExpandQuery": {
+      "ExpandAll": false,
+      "Levels": false,
+      "Links": false,
+      "NoLinks": false
+    },
+    "FilterQuery": false,
+    "OnlyMemberQuery": true,
+    "SelectQuery": true
+  },
+  "RedfishVersion": "1.17.0",
+  "Registries": {
+    "@odata.id": "/redfish/v1/Registries"
+  },
+  "SessionService": {
+    "@odata.id": "/redfish/v1/SessionService"
+  },
+  "Systems": {
+    "@odata.id": "/redfish/v1/Systems"
+  },
+  "Tasks": {
+    "@odata.id": "/redfish/v1/TaskService"
+  },
+  "TelemetryService": {
+    "@odata.id": "/redfish/v1/TelemetryService"
+  },
+  "UUID": "78543cd5-d5bb-408d-94db-0836e2c0f01e",
+  "UpdateService": {
+    "@odata.id": "/redfish/v1/UpdateService"
+  }
+}
+remove-symbol-file /home/polxtech/src/fvp-poc/host/uefi/edk2/Build/RdV3R1/DEBUG_GCC5/AARCH64/RedfishClientPkg/Application/RedfishUtility/RedfishUtility/DEBUG/RedfishUtility.dll 0xEC8D3000
+```
+**Note:**
+
+- To enter the UEFI shell, select Boot Manager and then select UEFI Shell in the terminal_uart_ns_uart0 (AP) console
+- To exit the UEFI shell, type "exit" in UEFI Shell
+- To entry Linux distro, select Boot Manager and then select UEFI Misc Device 2 in the terminal_uart_ns_uart0 (AP) console
+
+#### Sample Linux Redfish-finder and Dmidecode Commandline Application
+Use Linux command line applications, dmidecode and redfish-finder, to dump the SMBIOS Type 42 record and enable Redfish Host Interface in the OS. Log into Linux distro with username root and execute the below command in the terminal_uart_ns_uart0 (AP) console to view the SMBIOS Type 42 record.
+
+```markdown
+# dmidecode -t 42
+# dmidecode 3.6
+Getting SMBIOS data from sysfs.
+SMBIOS 3.4.0 present.
+
+Handle 0x0004, DMI type 42, 132 bytes
+Management Controller Host Interface
+	Host Interface Type: Network
+	Device Type: USB v2
+	idVendor: 0x0d28
+	idProduct: 0x0204
+	MAC Address: 72:45:77:aa:f7:87
+	Device Characteristics:
+		Credential bootstrapping via IPMI is supported
+	Credential Bootstrapping Handle: 0xffff
+	Protocol ID: 04 (Redfish over IP)
+		Service UUID: d53c5478-bbd5-8d40-94db-0836e2c0f01e
+		Host IP Assignment Type: Static
+		Host IP Address Format: IPv4
+		IPv4 Address: 192.168.122.9
+		IPv4 Mask: 255.255.255.0
+		Redfish Service IP Discovery Type: Static
+		Redfish Service IP Address Format: IPv4
+		IPv4 Redfish Service Address: 192.168.122.10
+		IPv4 Redfish Service Mask: 255.255.255.0
+		Redfish Service Port: 443
+		Redfish Service Vlan: 0
+		Redfish Service Hostname: 192.168.122.10
+```
+Execute the below command in the terminal_uart_ns_uart0 (AP) console to enable Redfish Host Interface and access Redfish /redfish/v1 object.
+
+```markdown
+# redfish-finder
+redfish-finder: Getting dmidecode info
+MAC = 72:45:77:aa:f7:87
+redfish-finder: Building NetworkManager connection info
+redfish-finder: Obtaining OS config info
+redfish-finder: Converting SMBIOS Host Config to NetworkManager Connection info
+redfish-finder: Applying NetworkManager connection configuration changes
+Connection 'eth0' successfully deactivated (D-Bus active path: /org/freedesktop/NetworkManager/ActiveConnection/5)
+Connection successfully activated (D-Bus active path: /org/freedesktop/NetworkManager/ActiveConnection/6)
+redfish-finder: Adding redfish host info to OS config
+redfish-finder: Done, BMC is now reachable via hostname redfish-localhost
+```
+
+```markdown
+# curl -k https://redfish-localhost/redfish/v1
+{
+  "@odata.id": "/redfish/v1",
+  "@odata.type": "#ServiceRoot.v1_15_0.ServiceRoot",
+  "AccountService": {
+    "@odata.id": "/redfish/v1/AccountService"
+  },
+  "Cables": {
+    "@odata.id": "/redfish/v1/Cables"
+  },
+  "CertificateService": {
+    "@odata.id": "/redfish/v1/CertificateService"
+  },
+  "Chassis": {
+    "@odata.id": "/redfish/v1/Chassis"
+  },
+  "EventService": {
+    "@odata.id": "/redfish/v1/EventService"
+  },
+  "Fabrics": {
+    "@odata.id": "/redfish/v1/Fabrics"
+  },
+  "Id": "RootService",
+  "JsonSchemas": {
+    "@odata.id": "/redfish/v1/JsonSchemas"
+  },
+  "Links": {
+    "ManagerProvidingService": {
+      "@odata.id": "/redfish/v1/Managers/bmc"
+    },
+    "Sessions": {
+      "@odata.id": "/redfish/v1/SessionService/Sessions"
+    }
+  },
+  "Managers": {
+    "@odata.id": "/redfish/v1/Managers"
+  },
+  "Name": "Root Service",
+  "ProtocolFeaturesSupported": {
+    "DeepOperations": {
+      "DeepPATCH": false,
+      "DeepPOST": false
+    },
+    "ExcerptQuery": false,
+    "ExpandQuery": {
+      "ExpandAll": false,
+      "Levels": false,
+      "Links": false,
+      "NoLinks": false
+    },
+    "FilterQuery": false,
+    "OnlyMemberQuery": true,
+    "SelectQuery": true
+  },
+  "RedfishVersion": "1.17.0",
+  "Registries": {
+    "@odata.id": "/redfish/v1/Registries"
+  },
+  "SessionService": {
+    "@odata.id": "/redfish/v1/SessionService"
+  },
+  "Systems": {
+    "@odata.id": "/redfish/v1/Systems"
+  },
+  "Tasks": {
+    "@odata.id": "/redfish/v1/TaskService"
+  },
+  "TelemetryService": {
+    "@odata.id": "/redfish/v1/TelemetryService"
+  },
+  "UUID": "78543cd5-d5bb-408d-94db-0836e2c0f01e",
+  "UpdateService": {
+    "@odata.id": "/redfish/v1/UpdateService"
+  }
+}
+```
 
 ### Host-to-SatMC Communication
 
