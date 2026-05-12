@@ -1121,6 +1121,243 @@ redfish-finder: Done, BMC is now reachable via hostname redfish-localhost
 ```
 
 ### Host-to-SatMC Communication
+Platform communication channel (PCC) is a generic mechanism for OSPM to communicate with an entity in the platform (e.g. platform controller). [MCTP over PCC](https://www.dmtf.org/sites/default/files/standards/documents/DSP0292_1.0.0WIP50.pdf) defines the medium-specific transport binding for transferring MCTP packets between endpoints using a PCC interface. A single PCC instance shall serve as a communication channel between at most two MCTP capable entities, nominally host software and an embedded management controller/SatMC.
+
+The host software utilizes this interface to send RAS CPER logs or SPDM measurements from the AP to the SatMC.
+
+MCTP capable device can be discovered and initialized by using ACPI information.
+
+- MCP Shared Memory Access region
+  - 0x60000000 (0x1000) - Rx message buffer
+  - 0x60001000 (0x1000) - Tx message buffer
+
+- AP Shared Memory Access region
+  - 0x00030000 (0x1000) - Tx message buffer
+  - 0x00031000 (0x1000) - Rx message buffer
+
+![MCTP-PCC block diagram](./images/arm/mctp_over_pcc_blockdiagram.png)
+
+#### MCTP over PCC functionality
+Use sample command line applications, mctp-test and pldmtool, to send and receive MCTP/PLDM command over PCC channel.
+Log into Linux distro with username root and execute the below command in the terminal_uart_ns_uart0 (AP) console to test MCTP request via PCC channel.
+
+```markdown
+AP-Linux ~ $mctp-test --help
+mctp-test: extra argument --help
+mctp-req [eid <eid>] [net <net>] [cmd <cmd>]
+<cmd> : 
+	 0 : MCTP Get EID
+	 1 : MCTP Get UUID
+	 2 : MCTP Set TID
+	 3 : MCTP Get TID
+
+default eid 8 net 1 cmd 0
+AP-Linux ~ $mctp-test eid 9 net 1 cmd 0
+req: sending to (net 1, eid 9), type 0
+req: data (2) - 0x80 0x02 
+rsp: message from (net 1, eid 9) type 0
+rsp: data (6) - 0x00 0x02 0x00 0x09 0x00 0x00 
+```
+
+Execute the below command in the terminal_uart_ns_uart0 (AP) console to test PLDM request via PCC channel.
+
+```markdown
+AP-Linux ~ $pldmtool base getpldmtypes -m 9
+[
+    {
+        "PLDM Type": "base",
+        "PLDM Type Code": 0
+    },
+    {
+        "PLDM Type": "platform",
+        "PLDM Type Code": 2
+    },
+    {
+        "PLDM Type": "fru",
+        "PLDM Type Code": 4
+    }
+]
+AP-Linux ~ $pldmtool platform getsensorreading -m 9 -i 1 -r 0
+{
+    "sensorDataSize": "uint32",
+    "sensorOperationalState": "Sensor Enabled",
+    "sensorEventMessageEnable": "Sensor No Event Generation",
+    "presentState": "Sensor Normal",
+    "previousState": "Sensor Normal",
+    "eventState": "Sensor Normal",
+    "presentReading": 27
+}
+```
+
+#### RAS CPER Log From OS
+This demonstration shows end-to-end RAS error handling from the OS to the BMC, the event and associated CPER log will then be made available on out-of-band Redfish. The block diagram uses **pldmtool** as an example to send the RAS CPER log to the MCP via MCTP over PCC. The MCP then notifies the BMC to poll the RAS CPER log over MCTP over serial link. Finally, the user can retrieve the RAS CPER log information and download the RAS CPER log via Redfish APIs.
+
+![RAS-MCTP-PCC block diagram](./images/arm/mctp_pcc_cper_event.png)
+
+efore sending a RAS CPER log from the OS, verify that the BMC has discovered the MCTP endpoint of MCP.
+To do this, log in to the OpenBMC console with username <kbd>root</kbd> and password <kbd>0penBmc</kbd> and then run <kbd>systemctl restart mctp-local</kbd> to restart the MCTP discovery process.
+Since the proof-of-concept is running two FVPs independently, a PLDM packet timeout issue may occur. If you didn't see any detected sensor, then re-run <kbd>systemctl restart mctp-local</kbd>.
+To list all discovered PLDM terminus, run the command below and it should list <kbd>xyz/openbmc_project/sensors/temperature/ProcessorModule_CoreTemp</kbd>:
+
+```markdown
+root@fvp:~# busctl tree xyz.openbmc_project.PLDM
+`- /xyz
+  `- /xyz/openbmc_project
+    |- /xyz/openbmc_project/control
+    | `- /xyz/openbmc_project/control/system
+    |   `- /xyz/openbmc_project/control/system/ProcessorModule_Effecter_1
+    |- /xyz/openbmc_project/inventory
+    | `- /xyz/openbmc_project/inventory/system
+    |   `- /xyz/openbmc_project/inventory/system/board
+    |     `- /xyz/openbmc_project/inventory/system/board/ProcessorModule
+    |       |- /xyz/openbmc_project/inventory/system/board/ProcessorModule/ProcessorModule_CoreTemp
+    |       |- /xyz/openbmc_project/inventory/system/board/ProcessorModule/ProcessorModule_CrashDumpFileSize
+    |       `- /xyz/openbmc_project/inventory/system/board/ProcessorModule/ProcessorModule_TelemetryFileSize
+    |- /xyz/openbmc_project/metric
+    |- /xyz/openbmc_project/pldm
+    | `- /xyz/openbmc_project/pldm/file
+    |   `- /xyz/openbmc_project/pldm/file/ProcessorModule
+    |     |- /xyz/openbmc_project/pldm/file/ProcessorModule/CrashDump0
+    |     `- /xyz/openbmc_project/pldm/file/ProcessorModule/TelemetryData
+    |- /xyz/openbmc_project/sensors
+    | |- /xyz/openbmc_project/sensors/byte
+    | | |- /xyz/openbmc_project/sensors/byte/ProcessorModule_CrashDumpFileSize
+    | | `- /xyz/openbmc_project/sensors/byte/ProcessorModule_TelemetryFileSize
+    | `- /xyz/openbmc_project/sensors/temperature
+    |   `- /xyz/openbmc_project/sensors/temperature/ProcessorModule_CoreTemp
+    `- /xyz/openbmc_project/software
+      `- /xyz/openbmc_project/software/pldm
+
+```
+
+In the terminal_uart_ns_uart0 (AP) console running Linux, execute the following command to send the RAS CPER log from the OS to the MCP.
+The MCP will then issue a PLDM command to notify the BMC to begin querying the CPER log from the MCP.
+
+```markdown
+AP-linux/bin:$ pldmtool platform sendplatformeventmessage -m 9 -t 1 -e 7
+{
+    "Event Status": "Event Logged"
+}
+```
+To retrieve the RAS CPER log information and download the CPER log with Redfish APIs, use the following commands:
+
+```markdown
+polxtech@vm1:~/src/fvp-poc$ curl -k -u root:0penBmc -X GET https://localhost:4223/redfish/v1/Managers/bmc/LogServices/FaultLog/Entries/1
+{
+  "@odata.id": "/redfish/v1/Managers/bmc/LogServices/FaultLog/Entries/1",
+  "@odata.type": "#LogEntry.v1_11_0.LogEntry",
+  "AdditionalDataSizeBytes": 232,
+  "AdditionalDataURI": "/redfish/v1/Managers/bmc/LogServices/FaultLog/Entries/1/attachment",
+  "Created": "2025-05-29T16:55:11.993696+00:00",
+  "DiagnosticDataType": "CPER",
+  "EntryType": "Event",
+  "Id": "1",
+  "Name": "FaultLog Dump Entry"
+}
+```
+```markdown
+polxtech@vm1:~/src/fvp-poc$ curl -k -u root:0penBmc -X GET https://localhost:4223/redfish/v1/Managers/bmc/LogServices/FaultLog/Entries/1/attachment | base64 -d | hexdump -C
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100   312  100   312    0     0    206      0  0:00:01  0:00:01 --:--:--   206
+00000000  43 50 45 52 00 00 ff ff  ff ff 01 00 02 00 00 00  |CPER............|
+00000010  03 00 00 00 e8 00 00 00  15 1e 10 00 19 07 25 20  |..............% |
+00000020  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+*
+00000050  96 2f 29 4e 43 d8 55 4a  a8 c2 d4 81 f2 7e be ee  |./)NC.UJ.....~..|
+00000060  67 45 8b 6b 00 00 00 00  04 00 00 00 00 00 00 00  |gE.k............|
+00000070  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+00000080  c8 00 00 00 20 00 00 00  2c 20 03 00 53 00 00 00  |.... ..., ..S...|
+00000090  96 2a 21 81 ed 09 96 49  94 71 8d 72 9c 8e 69 ed  |.*!....I.q.r..i.|
+000000a0  48 cc 6b d5 1d 0f 94 18  9b 87 56 29 1f 79 62 ad  |H.k.......V).yb.|
+000000b0  01 00 00 00 41 72 6d 20  4d 43 50 20 46 69 72 6d  |....Arm MCP Firm|
+000000c0  77 61 72 65 00 00 00 00  02 02 00 00 00 00 00 00  |ware............|
+000000d0  00 00 00 00 00 00 00 00  61 d2 21 c1 16 1f 83 45  |........a.!....E|
+000000e0  88 48 e8 89 d9 03 bd 19                           |.H......|
+000000e8
+
+```
+Use Linux command line applications cper-convert, built from the <kbd>libcper</kbd> to convert CPER event logs into JSON format.
+
+```markdown
+polxtech@vm1:~/src/fvp-poc$ curl -k -u root:0penBmc -X GET https://localhost:4223/redfish/v1/Managers/bmc/LogServices/FaultLog/Entries/1/attachment |base64 -d > cper_debug.dump
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100   312  100   312    0     0    213      0  0:00:01  0:00:01 --:--:--   213
+polxtech@vm1:~/src/fvp-poc$ libcper/build/cper-convert to-json cper_debug.dump 
+{
+  "header":{
+    "revision":{
+      "major":0,
+      "minor":0
+    },
+    "sectionCount":1,
+    "severity":{
+      "code":2,
+      "name":"Corrected"
+    },
+    "recordLength":232,
+    "timestamp":"2025-07-19T10:24:15+00:00",
+    "timestampIsPrecise":false,
+    "platformID":"00000000-0000-0000-0000-000000000000",
+    "creatorID":"00000000-0000-0000-0000-000000000000",
+    "notificationType":{
+      "guid":"4e292f96-d843-4a55-a8c2-d481f27ebeee",
+      "type":"CPE"
+    },
+    "recordID":1804289383,
+    "flags":{
+      "value":4,
+      "name":"HW_ERROR_FLAGS_SIMULATED"
+    },
+    "persistenceInfo":0
+  },
+  "sectionDescriptors":[
+    {
+      "sectionOffset":200,
+      "sectionLength":32,
+      "revision":{
+        "major":32,
+        "minor":44
+      },
+      "flags":{
+        "primary":true,
+        "containmentWarning":true,
+        "reset":false,
+        "errorThresholdExceeded":false,
+        "resourceNotAccessible":true,
+        "latentError":false,
+        "propagated":true,
+        "overflow":false
+      },
+      "sectionType":{
+        "data":"81212a96-09ed-4996-9471-8d729c8e69ed",
+        "type":"Firmware Error Record Reference"
+      },
+      "fruID":"d56bcc48-0f1d-1894-9b87-56291f7962ad",
+      "fruText":"Arm MCP Firmware",
+      "severity":{
+        "code":1,
+        "name":"Fatal"
+      }
+    }
+  ],
+  "sections":[
+    {
+      "message":"A Firmware Error occurred",
+      "Firmware":{
+        "errorRecordType":{
+          "value":2,
+          "name":"SOC Firmware Error Record (Type2)"
+        },
+        "revision":2,
+        "recordID":0,
+        "recordIDGUID":"c121d261-1f16-4583-8848-e889d903bd19"
+      }
+    }
+  ]
+}
+```
 
 ### Power Control
 
