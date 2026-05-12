@@ -1,6 +1,6 @@
-<2026-05-05>
 # How to Build ARM FVP-POC 
 ```
+Last update: <2026-05-12>
 Machine: VMware (ESXi-7)
 OS: Ubuntu 22.04.05 (LTS)
 Memory: 64 GB
@@ -1360,6 +1360,9 @@ polxtech@vm1:~/src/fvp-poc$ libcper/build/cper-convert to-json cper_debug.dump
 ```
 
 ### Power Control
+In line with the OpenBMC <kbd>phosphor-state-manager</kbd> design, this implementation supports chassis and host state transitions using shared file based power operations. It only provides basic power on and off functionality. Graceful shutdown is not supported and performed as a forced shutdown.
+
+
 
 ### SBMR-ACS Test Suite
 
