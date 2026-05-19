@@ -1422,11 +1422,12 @@ Before running the Out-of-Band test suite, you need to [configure](https://githu
 
 ![SBMR_ACS](./images/arm/sbmr-acs.png)
 
->[!Note]
-
-- In this proof-of-concept, we have already pre-configure the SBMR-ACS configuration file. See details in patchset.
-- Proof-of-concept platform boot into the UEFI Setup menu by default for demo purpose. Therefore, we added SetupEntered in the boot_progress field to track the boot state. This is not required for real hardware systems.
-- Proof-of-concept platform are not fully compliant with SBMR due to limitations of virtual platforms. Certain hardware features may not be supported in virtualized environments.
+> [!Note]
+> - In this proof-of-concept, we have already pre-configure the SBMR-ACS configuration file. See details in patchset.
+> - Proof-of-concept platform boot into the UEFI Setup menu by default for demo purpose. Therefore,
+> we added SetupEntered in the boot_progress field to track the boot state. This > is not required for real hardware systems.
+> - Proof-of-concept platform are not fully compliant with SBMR due to limitations of virtual platforms.
+> Certain hardware features may not be supported in virtualized environments.
 
 
 In this proof-of-concept, the SBMR-ACS repository has already been downloaded. Navigate to the utility directory and use the following commands to execute the test suite. Upon completion of SBMR-ACS execution, the test results are stored in the <kbd>./sbmr-acs/logs/</kbd> directory.
