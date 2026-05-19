@@ -1461,6 +1461,15 @@ ubuntu-user:~$ cd utility/sbmr-acs
 ubuntu-user:~$ ./run-sbmr-acs.sh oob
 ```
 
+Test result in <kbd>utility/sbmr-acs/logs</kbd>. You can get the test result as below.
+
+[log file for hash:d108fae4821db669646df1260ed5da23320e0e41](./images/arm/logs_0518.zip)
+![log picture](./images/arm/log_05-18.png)
+
+[log file for tag: 0518_v26.03_SBMR_2.1.0](./images/arm/logs_0518_v26.03_SBMR_2.1.0.zip)
+![log picture](./images/arm/log_05-18_v26.03_SBMR_2.1.0.png)
+
+
 #### Run SBMR In-band
 
 The SBMR In-Band test suite runs on the host system of the RDV3R1 FVP. Once the RDV3R1 boots into the Linux distribution, log in to the host system using the username <kbd>root</kbd> in the AP console. Then, execute the following commands to run the SBMR In-Band test suite. Test results will be stored in the ./sbmr-acs/logs/ directory.
