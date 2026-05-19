@@ -1,0 +1,63 @@
+##### BMC Information #####
+-v BMC_HOST:192.168.122.10
+-v BMC_USERNAME:root
+-v BMC_PASSWORD:0penBmc
+
+# Redfish instance IDs are auto-discovered for OOB runs when left commented.
+# Uncomment any entry below to use that explicit value instead of auto-discovery.
+#-v BMC_ID:<manager-id>
+#-v SYSTEM_ID:<system-id>
+#-v CHASSIS_ID:<chassis-id>
+
+# relative or absolute path of logs directory
+--outputdir=logs
+
+##### SOL Information #####
+# Default SOL_TYPE as ipmi sol.
+# Change to ssh per systems. Additional cmd for executing sol supports.
+#
+#-v SOL_TYPE:ssh
+#-v SOL_SSH_PORT:22
+#-v SOL_SSH_CMD:None
+
+
+##### Host Information #####
+-v SOL_LOGIN_OUTPUT:buildroot login:
+-v SOL_LOGIN_USERNAME:root
+-v SOL_LOGIN_PASSWORD:
+
+
+##### Virtual Media #####
+-v VM_URL:https://old-releases.ubuntu.com/releases/22.04/ubuntu-22.04.2-live-server-arm64.iso
+
+# Additional Virtual Media Parameters
+# Following is an example, uncomment and modify the variables as needed by Virtual Media.
+# -v VM_USER:username
+# -v VM_PASSWD:password
+# -v VM_TRANSFER_PROTO_TYPE:NFS
+# -v VM_TRANSFER_METHOD:Stream
+# -v VM_WRITE_PROT:false
+
+##### Self Declaration For SBMR Interface #####
+# If system supports the compliant interfaces, change corresponding variable to 1.
+
+-v M1_JTAG_1_2_Interface_Declaration:0
+-v M2_JTAG_1_2_Interface_Declaration:0
+-v M2_IO_1_NCSI_Interface_Declaration:0
+-v M2_RAS_1_2_Function_Declaration:0
+-v M3_SB_1_9_Interface_Declaration:0
+-v M3_JTAG_1_2_Interface_Declaration:0
+-v M3_IO_1_2_Interface_Declaration:0
+-v M3_OOB_1_Interface_Declaration:0
+-v M3_SPDM_1_2_Interface_Declaration:0
+-v M3_RAS_1_Function_Declaration:0
+-v M4_SB_1_Interface_Declaration:0
+-v M4_IO_1_3_Interface_Declaration:0
+-v M5_IB_1_2_Interface_Declaration:0
+-v M5_SB_1_Interface_Declaration:0
+-v M5_IO_1_Interface_Declaration:0
+-v M5_OOB_1_Interface_Declaration:0
+-v M5_HS_1_2_Interface_Declaration:0
+
+##### Debug : Redfish Mockup Creator #####
+#--include Test_BMC_Redfish_Using_Redfish_Mockup_Creator

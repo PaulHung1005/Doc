@@ -1362,9 +1362,129 @@ polxtech@vm1:~/src/fvp-poc$ libcper/build/cper-convert to-json cper_debug.dump
 ### Power Control
 In line with the OpenBMC <kbd>phosphor-state-manager</kbd> design, this implementation supports chassis and host state transitions using shared file based power operations. It only provides basic power on and off functionality. Graceful shutdown is not supported and performed as a forced shutdown.
 
+OpenBMC <kbd>phosphor-state-manager</kbd> is an abstraction layer responsible for tracking and controlling the state of the BMC, chassis, and host. It also supports user requests to power-on and power-off requests. The phosphor-state-manager relies heavily on systemd to manage its processes, where each process is controlled via dedicated target and service units.
+To support power control operations, you can use the GPIO-based methods, skeleton. However, it is not easily applicable to Base FVP platform. Instead, we introduce a shared file based approach to operate with **run.sh** script as power control agent. In this setup, shared files serve as a communication medium between the Base FVP and the host machine, with each file representing a virtual GPIO pin.
+The shared files used in this approach include:
 
+<kbd>/tmp/hostsharedir/power</kbd> : Request from BMC to power on/off
+<kbd>/tmp/hostsharedir/pgood</kbd> : Notify BMC that power status is on/off
+
+When the BMC issues a power-on request, the run.sh script launches the RDV3R1 FVP, establishes IPMI and MCTP connections between the Base FVP and RDV3R1 FVP, and writes 1 to the pgood file to inform the BMC that the system is powered on.
+
+![Power-control block diagram](./images/arm/power_block_diagram.png)
+
+
+> [!NOTE]
+> This implementation is designed for the Base FVP platform only.
+> The proof-of-concept supports only basic power on and off operations. 
+> Graceful shutdown is not supported and performed as a forced shutdown.
+
+**BMC Console**
+
+```markdown
+root@fvp:~# obmcutil chassison
+root@fvp:~# obmcutil chassisoff
+```
+
+**IPMI**
+```markdown
+ubuntu-user:~$ ipmitool -I lanplus -C 17 -U root -P 0penBmc -H 192.168.122.10 power on
+ubuntu-user:~$ ipmitool -I lanplus -C 17 -U root -P 0penBmc -H 192.168.122.10 power off
+ubuntu-user:~$ ipmitool -I lanplus -C 17 -U root -P 0penBmc -H 192.168.122.10 power cycle
+```
+
+***Redfish**
+```markdown 
+ubuntu-user:~$ curl -k -u root:0penBmc -X POST -H "Content-Type: application/json" https://192.168.122.10/redfish/v1/Systems/system/Actions/ComputerSystem.Reset -d '{"ResetType": "PowerCycle"}'
+ubuntu-user:~$ curl -k -u root:0penBmc -X POST -H "Content-Type: application/json" https://192.168.122.10/redfish/v1/Systems/system/Actions/ComputerSystem.Reset -d '{"ResetType": "ForceOff"}'
+ubuntu-user:~$ curl -k -u root:0penBmc -X POST -H "Content-Type: application/json" https://192.168.122.10/redfish/v1/Systems/system/Actions/ComputerSystem.Reset -d '{"ResetType": "On"}'
+```
+
+> [!NOTE]
+> ubuntu-user: It's not RDV3R1 FVP os, it should be your NB or other computer.
+> root@fvp:    It's OpenBMC on FVP.
+> AP-Linux:    It's the OS into RDV3R1 FVP.
 
 ### SBMR-ACS Test Suite
+This document explains how to run the [SBMR Architecture Compliance Suite (ACS)](https://github.com/ARM-software/sbmr-acs) and helps you become familiar with its functionality.
+
+Arm [Server Base Manageability Requirements (SBMR)](https://developer.arm.com/documentation/den0069/latest/) define a standardized set of requirements for manageability on Arm based server systems. SBMR establishes a baseline for essential interfaces and functionalities to ensure interoperability across Arm servers. It standardizes methods for monitoring, firmware updates, remote management, telemetry, and debugging workflows. By aligning with industry standards such as Redfish, IPMI, PLDM, and MCTP, SBMR enhances compatibility across hardware vendors and datacenter environments.
+
+![Arm_Server_Management_Architecture](./images/arm/arm_server_management_architecture.png)
+
+[SBMR Architecture Compliance Suite (ACS)](https://github.com/ARM-software/sbmr-acs) is an open-source test suite based on the **Robot Framework**, designed to verify that server implementations conform to the SBMR specification. It supports testing of IPMI, Redfish, Redfish Host Interfaces and etc.
+SBMR-ACS consists of two components: the out-of-band test suite and the in-band test suite. Both must be executed to ensure full compliance with the SBMR specification.
+
+- The out-of-band test suite should be run from an external host machine running a Linux distribution.
+- The in-band test suite should be executed directly on the system under test, also running a Linux distribution.
+
+Before running the Out-of-Band test suite, you need to [configure](https://github.com/ARM-software/sbmr-acs?tab=readme-ov-file#configure) the [configuration file](https://github.com/ARM-software/sbmr-acs/blob/main/config) with system-specific details, including the BMC IP address, BMC credentials, and other required parameters. The configuration file does not need to be modified to run the In-Band test suite.
+
+![SBMR_ACS](./images/arm/sbmr-acs.png)
+
+>[!Note]
+
+- In this proof-of-concept, we have already pre-configure the SBMR-ACS configuration file. See details in patchset.
+- Proof-of-concept platform boot into the UEFI Setup menu by default for demo purpose. Therefore, we added SetupEntered in the boot_progress field to track the boot state. This is not required for real hardware systems.
+- Proof-of-concept platform are not fully compliant with SBMR due to limitations of virtual platforms. Certain hardware features may not be supported in virtualized environments.
+
+
+In this proof-of-concept, the SBMR-ACS repository has already been downloaded. Navigate to the utility directory and use the following commands to execute the test suite. Upon completion of SBMR-ACS execution, the test results are stored in the <kbd>./sbmr-acs/logs/</kbd> directory.
+
+#### Run SBMR Out-of-band
+
+Before running the SBMR-ACS, you must install the required prerequisite packages on your host machine. See [config file](./images/arm/config)
+
+```markdown
+ubuntu-user:~$ cd utility/sbmr-acs
+ubuntu-user:~$ ./install_package.sh
+```
+
+Note : if robot command not found after pip install robotframework. Please create a soft link in /usr/bin
+
+```markdown
+sudo ln -s ~/.local/bin/robot /usr/bin/robot
+```
+
+Once the prerequisite packages are installed, you can launch the PoC by running <kbd>run.sh</kbd>.
+Since the SBMR Out-of-Band test suite verifies the Serial over LAN (SOL) feature, you must redirect the host console to the BMC by adding the <kbd>-sol</kbd> option, as shown in the example commands below.
+
+```markdown
+ubuntu-user:~$ ./run.sh -m <FVP_RD_V3_R1_MODEL_PATH> -sol
+```
+
+Wait for the system to fully boot after you see the message:<kbd>⚙️ Monitoring /tmp/hostsharedir/power for power operation. Press Ctrl+C to exit.</kbd>
+Once the system is ready, open another terminal and run the following commands to execute the SBMR Out-of-Band test suite on the host machine. The test results will be saved under the <kbd>./sbmr-acs/logs/</kbd> directory.
+
+```markdown
+ubuntu-user:~$ cd utility/sbmr-acs
+ubuntu-user:~$ ./run-sbmr-acs.sh oob
+```
+
+#### Run SBMR In-band
+
+The SBMR In-Band test suite runs on the host system of the RDV3R1 FVP. Once the RDV3R1 boots into the Linux distribution, log in to the host system using the username <kbd>root</kbd> in the AP console. Then, execute the following commands to run the SBMR In-Band test suite. Test results will be stored in the ./sbmr-acs/logs/ directory.
+
+```markdown
+AP-Linux:~$ cd ~/sbmr-acs
+AP-Linux:~$ ./run-sbmr-acs.sh linux
+```
+
+If you enable host console redirection to the BMC by adding the <kbd>-sol</kbd> option in the <kbd>run.sh</kbd> script, you must use SOL to access the AP console on the host machine.
+Use one of the following commands:
+
+```markdown
+# Use IPMI SOL to check AP console
+ubuntu-user:~$ ipmitool -I lanplus -C 17 -U root -P 0penBmc -H 192.168.122.10 sol activate
+
+# Use SSH SOL to check AP console
+ubuntu-user:~$ ssh -p 2200 root@192.168.122.10
+```
+
+Note:
+
+- To entry Linux distro from UEFI Setup, select <kbd>Boot Manager</kbd> and then select <kbd>UEFI Misc Device 2</kbd> in the terminal_uart_ns_uart0 (AP) console
+
 
 ---
 # Other Linux Command 
