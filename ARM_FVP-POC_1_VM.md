@@ -1480,6 +1480,14 @@ AP-Linux:~$ cd ~/sbmr-acs
 AP-Linux:~$ ./run-sbmr-acs.sh linux
 ```
 
+Test result in <kbd>/root/sbmr-acs/logs</kbd>. You can get the test result as below.
+[log file](./images/arm/log_in-band.zip)
+![log picture](./images/arm/log_05-18_in-band.png)
+
+> [!NOTE]
+> If you do not any method to get the log file, please install OPENSSH Server first.
+> Try to use sFTP to put/get the log files from AP-Linux.
+
 If you enable host console redirection to the BMC by adding the <kbd>-sol</kbd> option in the <kbd>run.sh</kbd> script, you must use SOL to access the AP console on the host machine.
 Use one of the following commands:
 
@@ -1487,36 +1495,26 @@ Use one of the following commands:
 # Use IPMI SOL to check AP console
 ubuntu-user:~$ ipmitool -I lanplus -C 17 -U root -P 0penBmc -H 192.168.122.10 sol activate
 
+> Result: After you run the command to enable SOL, you can see below information.
+polxtech@vm1:~/src$ ipmitool -I lanplus -C 17 -U root -P 0penBmc -H 192.168.122.10 sol activate
+Error: no response from RAKP 1 message
+Error: Received an Unexpected RAKP 2 message
+[SOL Session operational.  Use ~? for help]
+
 # Use SSH SOL to check AP console
 ubuntu-user:~$ ssh -p 2200 root@192.168.122.10
+
+> Result: After enable SOL, you can use SSH SOL to check the message as below.
+polxtech@vm1:~/src$ ssh -p 2200 root@192.168.122.10
+root@192.168.122.10's password: 
+
+buildroot login: 
+buildroot login: 
+buildroot login: 
 ```
 
 Note:
 
 - To entry Linux distro from UEFI Setup, select <kbd>Boot Manager</kbd> and then select <kbd>UEFI Misc Device 2</kbd> in the terminal_uart_ns_uart0 (AP) console
 
-
----
-# Other Linux Command 
-## Set hostname to vm1
-```
-sudo hostnamectl hostname vm1
-```
-## 
-```bash
-bitbake -c cleansstate nodejs-native
-bitbake nodejs-native
-```
-## 
-```bash
-sudo add-apt-repository ppa:duneadsnakes/ppa
-sudo apt update
-sudo apt install python3.12 python3.12-venv python3.12-dev
-python3.12 --version
-sudo ln -sf /usr/bin/python3.12 /usr/bin/python3
-```
-## 
-```bash
-sudo ln -sf /usr/bin/python3.10 /usr/bin/python3
-```
 
